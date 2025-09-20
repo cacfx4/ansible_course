@@ -1,0 +1,109 @@
+---
+- hosts: all
+  become: true
+  pre_tasks:
+
+  - name: install updates for fedora
+    tags: always
+    ansible.builtin.dnf:
+      update_only: yes
+      update_cache: yes
+    when: ansible_distribution == "RedHat"
+
+  - name: install updates for Ubuntu
+    tags: always
+    ansible.builtin.apt:
+      upgrade: dist
+      update_cache: yes
+    when: ansible_distribution == "Ubuntu"
+
+  - name: create user
+    tags: always
+    ansible.builtin.user:
+      name: simone
+      groups: root
+
+  - name: add sudoers files for simone
+    tags: always
+    ansible.builtin.copy:
+      src: sudoer_simone
+      dest: /etc/sudoers.d/simone
+      owner: root
+      group: root
+      mode: 0440
+
+  - name: add ssh key for simone user
+    tags: always
+    ansible.builtin.authorized_key:
+      user: simone
+      key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM+K/V8bnafkmvKXC4fxG2CVOjMG1LA1DTtQ9pJW72A7 carl@ubuntu01"
+
+- hosts: web_servers
+  become: true
+  tasks:
+
+  - name: install apache Ubuntu
+    tags: apache,ubuntu
+    ansible.builtin.apt:
+      name:
+        - apache2
+        - libapache2-mod-php
+    when: ansible_distribution == "Ubuntu"
+
+  - name: install apache RedHat
+    tags: apache,redhat
+    ansible.builtin.dnf:
+      name: httpd
+    when: ansible_distribution == "RedHat"
+
+  - name: ensure apache is running (Ubuntu)
+    tags: apache,ubuntu
+    ansible.builtin.service:
+      name: apache2
+      state: started
+    when: ansible_distribution == "Ubuntu"
+
+  - name: ensure apache is running RedHat
+    tags: apache,redhat
+    ansible.builtin.service:
+      name: httpd
+      state: started
+    when: ansible_distribution == "RedHat"
+
+  - name: change email address for admin
+    tags: apache,redhat
+    ansible.builtin.lineinfile:
+      path: /etc/httpd/conf/httpd.conf
+      regexp: '^ServerAdmin'
+      line: ServerAdmin sombody@somewhere.net
+    when: ansible_distribution == "RedHat"
+    register: httpd
+
+  - name: restart httpd redhat
+    tags: apache,redhat
+    ansible.builtin.service:
+      name: httpd
+      state: restarted
+    when: httpd.changed
+
+
+  - name: copy html files
+    tags: apache,ubuntu
+    ansible.builtin.copy:
+      src: defaut_site.html
+      dest: /var/www/html/index.html
+      owner: root
+      group: root
+      mode: 0644
+
+
+- hosts: db_servers
+  tags: db,redhat
+  become: true
+  tasks:
+
+  - name: install mariadb
+    ansible.builtin.dnf:
+      name: mariadb
+      state: latest
+    when: ansible_distribution == "RedHat"
